@@ -17,3 +17,4 @@ variable "subnets" {
     public_ip = bool
   }))
 }
+

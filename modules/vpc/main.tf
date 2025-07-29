@@ -8,6 +8,14 @@ resource "aws_vpc" "this" {
   }
 }
 
+resource "aws_internet_gateway" "Final-Project-IGW" {
+  vpc_id = aws_vpc.this.id
+
+  tags = {
+    Name = "${var.vpc_name}-igw"
+  }
+}
+
 
 resource "aws_subnet" "all" {
   // We are passing list of objects as input here
