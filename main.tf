@@ -46,3 +46,19 @@ module "vpc" {
     }
   ]
 }
+
+module "security" {
+  source     = "./modules/security"
+  vpc_id     = module.vpc.vpc_id
+  my_ip_cidr = "54.87.252.77/32" # curl ifconfig.me
+}
+
+
+module "bastion" {
+  source        = "./modules/bastion"
+  ami_id        = "ami-0c101f26f147fa7fd" # Amazon Linux 2023 in us-east-1
+  instance_type = "t2.micro"
+  key_name      = "vockey"
+  subnet_id     = module.vpc.subnet_ids["public-subnet-1"]
+  bastion_sg_id = module.security.bastion_sg_id
+}
