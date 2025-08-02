@@ -62,3 +62,27 @@ module "bastion" {
   subnet_id     = module.vpc.subnet_ids["public-subnet-1"]
   bastion_sg_id = module.security.bastion_sg_id
 }
+
+module "alb" {
+  source    = "./modules/alb"
+  vpc_id    = module.vpc.vpc_id
+  alb_sg_id = module.security.alb_sg_id
+  public_subnet_ids = [
+    module.vpc.subnet_ids["public-subnet-1"],
+    module.vpc.subnet_ids["public-subnet-2"]
+  ]
+}
+
+
+module "asg" {
+  source        = "./modules/asg"
+  ami_id        = "ami-0c101f26f147fa7fd"
+  instance_type = "t2.micro"
+  key_name      = "vockey"
+  app_sg_id     = module.security.app_sg_id
+  private_subnet_ids = [
+    module.vpc.subnet_ids["private-subnet-app-1"],
+    module.vpc.subnet_ids["private-subnet-app-2"]
+  ]
+  target_group_arns = [module.alb.target_group_arn]
+}

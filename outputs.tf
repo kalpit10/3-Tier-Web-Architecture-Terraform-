@@ -12,3 +12,8 @@ output "asg_name" {
   value       = module.asg.asg_name
   description = "Name of the Auto Scaling Group"
 }
+
+output "alb_dns_name" {
+  value       = module.alb.alb_dns_name
+  description = "The public DNS name of the Application Load Balancer"
+}
