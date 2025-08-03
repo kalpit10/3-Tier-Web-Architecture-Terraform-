@@ -26,7 +26,7 @@ $instance_id = curl_exec($ch);
 curl_close($ch);
 
 // MySQL connection
-$conn = new mysqli("finalprojectdb.cvhvyymhcwar.us-east-1.rds.amazonaws.com:3306", "admin", "SenecaCAA100", "finalprojectdb");
+$conn = new mysqli("finalprojectdb.cvhvyymhcwar.us-east-1.rds.amazonaws.com", "admin", "SenecaCAA100", "finalprojectdb");
 
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);

@@ -9,3 +9,11 @@ variable "vpc_cidr" {
   default     = "192.168.0.0/16"
 }
 
+
+variable "db_username" {
+
+}
+
+variable "db_password" {
+
+}

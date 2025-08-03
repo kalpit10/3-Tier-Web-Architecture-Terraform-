@@ -50,7 +50,7 @@ module "vpc" {
 module "security" {
   source     = "./modules/security"
   vpc_id     = module.vpc.vpc_id
-  my_ip_cidr = "54.87.252.77/32" # curl ifconfig.me
+  my_ip_cidr = "0.0.0.0/0" # curl ifconfig.me
 }
 
 
@@ -90,8 +90,8 @@ module "asg" {
 
 module "rds" {
   source      = "./modules/rds"
-  db_username = "admin"
-  db_password = "SenecaCAA100"
+  db_username = var.db_username
+  db_password = var.db_password
   db_name     = "finalprojectdb"
   db_subnet_ids = [
     module.vpc.subnet_ids["private-subnet-db-1"],

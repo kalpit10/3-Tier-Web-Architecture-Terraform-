@@ -1,5 +1,5 @@
 resource "aws_launch_template" "this" {
-  name_prefix   = "final-project-lt-v4"
+  name_prefix   = "final-project-lt-v6"
   image_id      = var.ami_id
   instance_type = var.instance_type
   key_name      = var.key_name
