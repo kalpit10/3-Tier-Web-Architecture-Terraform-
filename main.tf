@@ -86,3 +86,16 @@ module "asg" {
   ]
   target_group_arns = [module.alb.target_group_arn]
 }
+
+
+module "rds" {
+  source      = "./modules/rds"
+  db_username = "admin"
+  db_password = "SenecaCAA100"
+  db_name     = "finalprojectdb"
+  db_subnet_ids = [
+    module.vpc.subnet_ids["private-subnet-db-1"],
+    module.vpc.subnet_ids["private-subnet-db-2"]
+  ]
+  db_sg_id = module.security.db_sg_id
+}
