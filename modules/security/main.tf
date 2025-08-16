@@ -153,6 +153,12 @@ resource "tls_private_key" "ssh_key" {
 }
 
 resource "aws_key_pair" "generated_key" {
-  key_name   = "dev-key"
+  key_name   = "new-dev-key"
   public_key = tls_private_key.ssh_key.public_key_openssh
+}
+
+resource "local_file" "private_key_file" {
+  content         = tls_private_key.ssh_key.private_key_pem
+  filename        = "${path.module}/new-dev-key.pem"
+  file_permission = "0600"
 }
