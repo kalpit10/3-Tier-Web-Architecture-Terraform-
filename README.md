@@ -16,7 +16,7 @@ A traditional 3-tier structure using **VPC**, **subnets**, **EC2**, **ALB**, **A
 ### 🖥️ Application Tier (Private Subnets)
 
 - **Auto Scaling Group (ASG)** — Maintains 2–6 EC2 instances
-- **Launch Template** — With Amazon Linux 2023 and CloudWatch agent
+- **Launch Template** — With Amazon Linux 2023 and CloudWatch Agent
 - **Private Subnets** — `192.168.10.0/24`, `192.168.11.0/24`
 - **NAT Gateways** — 2 for outbound internet access
 - **Security Group** — Allows HTTP only from ALB
@@ -26,7 +26,6 @@ A traditional 3-tier structure using **VPC**, **subnets**, **EC2**, **ALB**, **A
 - **RDS MySQL** — Single-AZ for cost savings
 - **DB Subnet Group** — `192.168.20.0/24`, `192.168.21.0/24`
 - **Security Group** — Allows MySQL traffic only from EC2 instances
-- **Secrets Manager** — Stores MySQL credentials securely
 
 ---
 
@@ -116,7 +115,7 @@ Before testing the form submission, you need to create the required database tab
 3. Click **Connect** → **EC2 Instance Connect**
 
 ### Step 2: Access Private EC2 Instance
-From the bastion host, SSH into one of your private EC2 instances:
+From the Bastion Host, SSH into one of your private EC2 instances:
 ```bash
 ssh -i your-key.pem ec2-user@<private-ec2-ip>
 ```
@@ -125,7 +124,7 @@ ssh -i your-key.pem ec2-user@<private-ec2-ip>
 Install MariaDB client to connect to the RDS MySQL database:
 ```bash
 sudo yum update -y
-sudo yum install -y mariadb
+sudo yum install -y mariadb105
 ```
 
 ### Step 4: Create Database Table
@@ -161,12 +160,12 @@ EXIT;
 
 ```bash
 -- Connect again
-mysql -h finalprojectdb.xxxxxxxxxxxxxxxx.us-east-1.rds.amazonaws.com -u admin -p
+mysql -h finalprojectdb.xxxxxxxxxxxxxxxx.us-east-1.rds.amazonaws.com -u <db_username> -p
 
-USE finalprojectdb;
+use finalprojectdb;
 
 -- Check submitted data
-SELECT * FROM users
+SELECT * FROM users;
 ```
 
 ---
@@ -186,7 +185,7 @@ SELECT * FROM users
 
 - ALB SG: Allows HTTP from anywhere
 - App SG: Allows HTTP only from ALB (Security Group Chaining)
-- DDB SG: Allows MySQL from App SG
+- DB SG: Allows MySQL from App SG
 - Bastion SG: Allows SSH via key pair
 
 ### Application (Application Module)
@@ -208,14 +207,13 @@ SELECT * FROM users
 - **Network Isolation**: Multi-tier subnet architecture
 - **Security Groups**: Least-privilege access rules. Security Group Chaining.
 - **Encryption**: EBS volumes and RDS storage encrypted
-- **Secrets Management**: Database credentials in AWS Secrets Manager
 - **IMDSv2**: Required on all EC2 instances
 
 ---
 
 ## Monitoring and Logging
 
-- **CloudWatch Logs**: Log Groups: /ec2/log/access || /ec2/log/error
+- **CloudWatch Logs (Log Groups)**:  /ec2/log/access || /ec2/log/error
 - **CloudWatch Agent**: CPU, Memory, Disk metrics
 - **CloudWatch Dashboard**: CPU and Memory% Monitoring Per Instance
 - **Health Checks**: ALB health checks for application instances
@@ -239,7 +237,6 @@ This development environment is optimized for cost:
 | ALB (Load Balancer)   | Application Load Balancer  | 1                 | ~$0.0225/hr         | Plus ~$0.008 per GB |
 | RDS MySQL             | db.t2.micro                | 1                 | ~$0.017/hr          | Single-AZ           |
 | RDS Storage           | 20GB gp2/gp3               | 1                 | ~$0.0025/hr         | $0.08/GB-month      |
-| Secrets Manager       | 1 Secret                   | 1                 | ~$0.0004/hr         | Based on $0.40/month|
 | CloudWatch Logs       | Log ingestion              | Variable          | ~$0.005-0.01/hr     | Based on usage      |
 | CloudWatch Agent      | Basic EC2 metrics          | 2-6 EC2s          | ~$0.00/hr           | Free (Basic)        |
 | CloudWatch Dashboards | 1 Dashboard                | 1                 | ~$0.0083/hr         | $3/month flat rate  |
@@ -252,7 +249,7 @@ This development environment is optimized for cost:
 |------------|----------------------------------|---------------------------|
 | Networking | NAT, IGW, VPC, Subnets           | ~$0.09                    |
 | Compute    | EC2 + ALB + EBS                  | ~$0.02 - $0.12            |
-| Database   | RDS + Storage + Secrets          | ~$0.02                    |
+| Database   | RDS + Storage                    | ~$0.02                    |
 | Monitoring | CloudWatch + Logs + Dashboard    | ~$0.005 - $0.02           |
 
 💡 **Estimated Total: ~$0.13 to $0.28/hour** depending on active instances and log volume.
@@ -306,13 +303,13 @@ terraform refresh
 
 ## Learning Objectives Achieved
 
-✅ **Terraform Basics**: Variables, outputs, modules, data sources
-✅ **AWS Networking**: VPC, subnets, routing, NAT gateways
-✅ **Security**: Security groups, least privilege access
-✅ **High Availability**: Multi-AZ deployment, auto scaling
-✅ **CloudWatch Observability**: CloudWatch agent, custom metrics, dashboards
-✅ **Database Management**: RDS, parameter groups, secrets management
-✅ **Infrastructure as Code**: Modular, reusable Terraform code
-✅ **Debugging & Troubleshooting**: Solved real IAM, metadata, health check, and CloudWatch agent issues
+- ✅ **Terraform Basics**: Variables, outputs, modules, data sources
+- ✅ **AWS Networking**: VPC, subnets, routing, NAT gateways
+- ✅ **Security**: Security groups, least privilege access
+- ✅ **High Availability**: Multi-AZ deployment, auto scaling
+- ✅ **CloudWatch Observability**: CloudWatch agent, custom metrics, dashboards
+- ✅ **Database Management**: RDS, parameter groups, secrets management
+- ✅ **Infrastructure as Code**: Modular, reusable Terraform code
+- ✅ **Debugging & Troubleshooting**: Solved real IAM, metadata, health check, and CloudWatch agent issues
 
 This development environment provides a solid foundation for learning AWS and Terraform while following best practices for a production-ready architecture.
