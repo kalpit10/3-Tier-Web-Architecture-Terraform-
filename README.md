@@ -4,7 +4,7 @@ This repository contains the complete **Terraform configuration** for a modular,
 
 ## Architecture Overview
 
-A traditional 3-tier structure using **VPC**, **subnets**, **ALB**, **ASG**, and **RDS**, fully written in Terraform.
+A traditional 3-tier structure using **VPC**, **subnets**, **EC2**, **ALB**, **ASG**, and **RDS**, fully written in Terraform.
 
 ### 🌐 Web Tier (Public Subnets)
 
