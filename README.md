@@ -243,6 +243,7 @@ This development environment is optimized for cost:
 | CloudWatch Logs       | Log ingestion              | Variable          | ~$0.005-0.01/hr     | Based on usage      |
 | CloudWatch Agent      | Basic EC2 metrics          | 2-6 EC2s          | ~$0.00/hr           | Free (Basic)        |
 | CloudWatch Dashboards | 1 Dashboard                | 1                 | ~$0.0083/hr         | $3/month flat rate  |
+
 ⚠️ **Note:** Data transfer, DNS (Route53), EIP association, and scaling events can increase charges slightly.
 
 ### Total Estimated Hourly Cost
