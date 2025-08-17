@@ -1,44 +1,51 @@
-
 # Development Environment - 3-Tier Architecture
 
-This directory contains the Terraform configuration for the development environment of our 3-tier AWS architecture.
+This repository contains the complete **Terraform configuration** for a modular, production-style **3-Tier AWS architecture**.
 
 ## Architecture Overview
 
-This development environment creates a complete 3-tier architecture with the following components:
+A traditional 3-tier structure using **VPC**, **subnets**, **ALB**, **ASG**, and **RDS**, fully written in Terraform.
 
 ### 🌐 Web Tier (Public Subnets)
-- **Application Load Balancer (ALB)** - Distributes incoming traffic
-- **Public Subnets** - 192.168.1.0/24, 192.168.2.0/24
-- **Internet Gateway** - Provides internet access
-- **Security Group** - Allows HTTP from internet
+
+- **Application Load Balancer (ALB)** — Handles all incoming HTTP traffic
+- **Public Subnets** — `192.168.1.0/24` (AZ A), `192.168.2.0/24` (AZ B)
+- **Internet Gateway** — Allows public internet access
+- **Security Group** — Allows port 80 (HTTP) traffic from the internet
 
 ### 🖥️ Application Tier (Private Subnets)
-- **Auto Scaling Group** - Manages EC2 instances (2-6 instances)
-- **Launch Template** - Defines instance configuration
-- **Private App Subnets** - 192.168.10.0/24, 192.168.11.0/24
-- **NAT Gateways** - Provides outbound internet access
-- **Security Group** - Allows traffic from ALB only
+
+- **Auto Scaling Group (ASG)** — Maintains 2–6 EC2 instances
+- **Launch Template** — With Amazon Linux 2023 and CloudWatch agent
+- **Private Subnets** — `192.168.10.0/24`, `192.168.11.0/24`
+- **NAT Gateways** — 2 for outbound internet access
+- **Security Group** — Allows HTTP only from ALB
 
 ### 🗄️ Database Tier (Private Subnets)
-- **RDS MySQL Instance** - Managed database service
-- **DB Subnet Group** - Spans multiple AZs (us-east-1a, us-east-1b)
-- **Private DB Subnets** - 192.168.20.0/24, 192.168.21.0/24
-- **Security Group** - Allows MySQL/Aurora traffic from app tier only
-- **Secrets Manager** - Stores database credentials securely
+
+- **RDS MySQL** — Single-AZ for cost savings
+- **DB Subnet Group** — `192.168.20.0/24`, `192.168.21.0/24`
+- **Security Group** — Allows MySQL traffic only from EC2 instances
+- **Secrets Manager** — Stores MySQL credentials securely
+
+---
 
 ## Development Environment Specifications
 
 ### Cost-Optimized Configuration
+
 - **EC2 Instances**: t2.micro (2-6 instances)
 - **RDS Instance**: db.t2.micro, single-AZ
 - **Storage**: GP3 for cost-effective performance
 
 ### Network Configuration
+
 - **VPC CIDR**: 192.168.0.0/16
 - **Availability Zones**: 2 AZs for high availability(us-east-1a/1b)
 - **Subnets**: 6 subnets total (2 public, 4 private)
 - **NAT Gateways**: 2 for redundancy
+
+---
 
 ## Prerequisites
 
@@ -46,9 +53,12 @@ This development environment creates a complete 3-tier architecture with the fol
 2. **Terraform installed** (version >= 1.0)
 3. **AWS Account** with necessary permissions
 
+---
+
 ## Deployment Instructions
 
-### 1. Initialize Terraform
+### 1. Initialize Terraform if using Cloud9 environment 
+
 ```bash
 cd ~
 sudo yum install -y yum-utils
@@ -60,25 +70,111 @@ git clone <SSH_ORIGIN_OF_REPO>
 terraform init
 ```
 
-### 2. Review the Plan
+### 2. Connect via VS Code
+
+```bash
+aws configure
+-- Enter AWS Access Key
+-- Enter AWS Secret
+```
+
+### 3. Validate the Syntax
+```bash
+terraform validate
+```
+
+### 4. Review the Plan
+
 ```bash
 terraform plan
 ```
 
-### 3. Deploy the Infrastructure
+### 5. Deploy the Infrastructure
+
 ```bash
-terraform apply
+terraform apply -auto-approve
 ```
 
-### 4. Access Your Application
+### 6. Access Your Application
+
 After deployment, Terraform will output the Application Load Balancer DNS name:
+
 ```
 application_url = "http://dev-3tier-alb-xxxxxxxxx.us-east-1.elb.amazonaws.com"
 ```
 
+---
+
+## Setting Up and Testing the PHP Application
+
+### Pre-requisites
+Before testing the form submission, you need to create the required database table.
+
+### Step 1: Connect to Bastion Host
+1. Navigate to **EC2 Console** → **Instances**
+2. Select your **Bastion Host** instance
+3. Click **Connect** → **EC2 Instance Connect**
+
+### Step 2: Access Private EC2 Instance
+From the bastion host, SSH into one of your private EC2 instances:
+```bash
+ssh -i your-key.pem ec2-user@<private-ec2-ip>
+```
+
+### Step 3: Install MySQL Client
+Install MariaDB client to connect to the RDS MySQL database:
+```bash
+sudo yum update -y
+sudo yum install -y mariadb
+```
+
+### Step 4: Create Database Table
+Connect to your RDS instance and create the required table:
+```bash
+mysql -h finalprojectdb.xxxxxxxxxxxxxxxx.us-east-1.rds.amazonaws.com -u <db_username> -p
+```
+Once connected, run these SQL commands:
+```bash
+-- Use the database
+USE finalprojectdb;
+
+-- Create users table
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(150) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Verify table creation
+DESCRIBE users;
+
+-- Exit MySQL
+EXIT;
+```
+
+### Step 5: Test the Application
+- Open your Application Load Balancer DNS name in a web browser
+- You should see the PHP form with Instance ID displayed. Refresh the page to switch between instances.
+- Fill in the form with a name and email
+- Submit the form to test database connectivity
+
+```bash
+-- Connect again
+mysql -h finalprojectdb.xxxxxxxxxxxxxxxx.us-east-1.rds.amazonaws.com -u admin -p
+
+USE finalprojectdb;
+
+-- Check submitted data
+SELECT * FROM users
+```
+
+---
+
 ## What Gets Created
 
 ### Networking (VPC Module)
+
 - 1 VPC with DNS hostnames enabled
 - 1 Internet Gateway
 - 2 Public subnets across 2 AZs
@@ -87,63 +183,108 @@ application_url = "http://dev-3tier-alb-xxxxxxxxx.us-east-1.elb.amazonaws.com"
 - Route tables and associations
 
 ### Security (Security Module)
-- ALB Security Group (HTTP from internet)
-- App Security Group (HTTP from ALB only)
-- Database Security Group (MySQL from app servers only)
-- Bastion Security Group (SSH access)
+
+- ALB SG: Allows HTTP from anywhere
+- App SG: Allows HTTP only from ALB (Security Group Chaining)
+- DDB SG: Allows MySQL from App SG
+- Bastion SG: Allows SSH via key pair
 
 ### Application (Application Module)
+
 - Application Load Balancer
-- Target Group with health checks
-- Launch Template with Amazon Linux 2023
+- Target Group with Health Checks
+- Launch Template with Amazon Linux 2023, CloudWatch Agent, user-data.sh for PHP form setup
 - Auto Scaling Group (2-6 instances)
-- Auto Scaling Policies
 
 ### Database (Database Module)
+
 - RDS MySQL instance
 - DB Subnet Group
+
+---
 
 ## Security Features
 
 - **Network Isolation**: Multi-tier subnet architecture
-- **Security Groups**: Least-privilege access rules. Security Group Chaining. 
+- **Security Groups**: Least-privilege access rules. Security Group Chaining.
 - **Encryption**: EBS volumes and RDS storage encrypted
 - **Secrets Management**: Database credentials in AWS Secrets Manager
 - **IMDSv2**: Required on all EC2 instances
 
+---
+
 ## Monitoring and Logging
 
-- **CloudWatch Logs**: RDS error, general, and slow query logs
+- **CloudWatch Logs**: Log Groups: /ec2/log/access || /ec2/log/error
+- **CloudWatch Agent**: CPU, Memory, Disk metrics
+- **CloudWatch Dashboard**: CPU and Memory% Monitoring Per Instance
 - **Health Checks**: ALB health checks for application instances
-- **Auto Scaling**: Based on instance health
+- **Auto Scaling**: Based on instance cpu load.
+ 
+---
 
-## Cost Considerations
+## AWS Cost Optimization Overview
 
 This development environment is optimized for cost:
-- Single-AZ RDS (no Multi-AZ)
-- Minimal backup retention (1 day)
-- Small instance types (t2.micro)
-- No enhanced monitoring
-- No Performance Insights
+
+### Cost Optimization Overview (Per Hour)
+
+| AWS Service           | Resource Type              | Quantity          | Est. Hr. Cost (USD) | Notes               |
+|-----------------------|----------------------------|-------------------|---------------------|---------------------|
+| VPC & Subnets         | VPC, Subnets, RTs          | 1 VPC + 6 Subnets | $0.00               | Free                |
+| Internet Gateway      | -                          | 1                 | $0.00               | Free                |
+| NAT Gateway           | NAT + Data                 | 2                 | ~$0.045/hr each     | $0.09/hr total      |
+| EC2 Instances         | t2.micro                   | 2-6               | ~$0.0116/hr each    | Free Tier may apply |
+| EBS Volumes           | 8GB gp3                    | 2-6               | ~$0.0011/hr per 8GB | Free Tier may apply |
+| ALB (Load Balancer)   | Application Load Balancer  | 1                 | ~$0.0225/hr         | Plus ~$0.008 per GB |
+| RDS MySQL             | db.t2.micro                | 1                 | ~$0.017/hr          | Single-AZ           |
+| RDS Storage           | 20GB gp2/gp3               | 1                 | ~$0.0025/hr         | $0.08/GB-month      |
+| Secrets Manager       | 1 Secret                   | 1                 | ~$0.0004/hr         | Based on $0.40/month|
+| CloudWatch Logs       | Log ingestion              | Variable          | ~$0.005-0.01/hr     | Based on usage      |
+| CloudWatch Agent      | Basic EC2 metrics          | 2-6 EC2s          | ~$0.00/hr           | Free (Basic)        |
+| CloudWatch Dashboards | 1 Dashboard                | 1                 | ~$0.0083/hr         | $3/month flat rate  |
+⚠️ **Note:** Data transfer, DNS (Route53), EIP association, and scaling events can increase charges slightly.
+
+### Total Estimated Hourly Cost
+
+| Tier       | Description                      | Approx. Cost Range (/hr)  |
+|------------|----------------------------------|---------------------------|
+| Networking | NAT, IGW, VPC, Subnets           | ~$0.09                    |
+| Compute    | EC2 + ALB + EBS                  | ~$0.02 - $0.12            |
+| Database   | RDS + Storage + Secrets          | ~$0.02                    |
+| Monitoring | CloudWatch + Logs + Dashboard    | ~$0.005 - $0.02           |
+
+💡 **Estimated Total: ~$0.13 to $0.28/hour** depending on active instances and log volume.
 
 **Estimated Monthly Cost**: ~$50-80 USD (varies by usage)
+
+---
 
 ## Cleanup
 
 To destroy all resources:
+
 ```bash
 terraform destroy
 ```
 
+---
+
 ## Troubleshooting
 
-### Common Issues
+### Troubleshooting Guide
 
-1. **Insufficient Permissions**: Ensure your AWS credentials have the necessary IAM permissions
-2. **Resource Limits**: Check AWS service limits in your region
-3. **Subnet Conflicts**: Ensure CIDR blocks don't conflict with existing VPCs
+| Issue                        | Solution                                                          |
+|------------------------------|-------------------------------------------------------------------|
+| App Not Loading in Browser   | Check ALB Target Group health status                              |
+| CloudWatch Agent Not Running | Ensure metadata token (IMDSv2) is fetched correctly               |
+| SSH Not Working              | Ensure `.pem` key has `chmod 600` and correct private IP used     |
+| No CPU Metrics Visible       | Use `stress` tool to simulate load                                |
 
-### Useful Commands
+
+---
+
+## Useful Commands
 
 ```bash
 # Check current state
@@ -160,15 +301,17 @@ terraform state list | grep resource_name/output_name
 terraform refresh
 ```
 
+---
+
 ## Learning Objectives Achieved
 
 ✅ **Terraform Basics**: Variables, outputs, modules, data sources
 ✅ **AWS Networking**: VPC, subnets, routing, NAT gateways
 ✅ **Security**: Security groups, least privilege access
 ✅ **High Availability**: Multi-AZ deployment, auto scaling
+✅ **CloudWatch Observability**: CloudWatch agent, custom metrics, dashboards
 ✅ **Database Management**: RDS, parameter groups, secrets management
 ✅ **Infrastructure as Code**: Modular, reusable Terraform code
+✅ **Debugging & Troubleshooting**: Solved real IAM, metadata, health check, and CloudWatch agent issues
 
 This development environment provides a solid foundation for learning AWS and Terraform while following best practices for a production-ready architecture.
-
-**THIS PROJECT WAS MADE UNDER AWS ACADEMY VOCAREUM LAB PERMISSIONS. ENTIRE INFRASTRUCTURE WAS DEVELOPED USING CLOUD9 ENVIRONMENT. **
