@@ -59,6 +59,10 @@ jobs:
   apply:
     needs: terraform # wait until plan job finishes
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_db_username: ${{ secrets.TF_VAR_DB_USERNAME }}
+      TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+      TF_VAR_db_name: ${{ secrets.TF_VAR_DB_NAME }}
     environment: dev # links to your protected environment
     permissions:
       id-token: write
