@@ -14,7 +14,7 @@ locals {
           metrics = [
             ["CWAgent", "cpu_usage_idle", "InstanceId", id]
           ]
-          period = 60 // Update every 60 seconds
+          period = 60        // Update every 60 seconds
           stat   = "Average" // Pull out average of CPU utilization
         }
       },

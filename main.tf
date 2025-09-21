@@ -1,4 +1,3 @@
-
 module "vpc" {
   source   = "./modules/vpc"
   vpc_cidr = var.vpc_cidr
@@ -71,21 +70,36 @@ module "alb" {
 }
 
 module "iam" {
-  source = "./modules/iam"
+  source        = "./modules/iam"
+  db_secret_arn = aws_secretsmanager_secret.db_credentials.arn
+}
+
+resource "aws_secretsmanager_secret" "db_credentials" {
+  name        = var.db_secret_name
+  description = "RDS credentials for the app tier"
+}
+
+resource "aws_secretsmanager_secret_version" "db_credentials" {
+  secret_id = aws_secretsmanager_secret.db_credentials.id
+  secret_string = jsonencode({
+    username = var.db_username
+    password = var.db_password
+    dbname   = var.db_name
+  })
 }
 
 
 module "rds" {
-  source      = "./modules/rds"
-  db_username = var.db_username
-  db_password = var.db_password
-  db_name     = "finalprojectdb"
+  source        = "./modules/rds"
+  db_secret_arn = aws_secretsmanager_secret.db_credentials.arn
+
   db_subnet_ids = [
     module.vpc.subnet_ids["private-subnet-db-1"],
     module.vpc.subnet_ids["private-subnet-db-2"]
   ]
   db_sg_id = module.security.db_sg_id
 }
+
 
 # path.module just tells Terraform,
 # “Start from this folder where my current .tf file is, and go find the JSON file from here.”
@@ -108,13 +122,14 @@ module "asg" {
   // "Hey ASG module! Here’s the JSON config for CloudWatch agent. Please use it."
   cloudwatch_agent_config   = data.template_file.cw_config.rendered
   iam_instance_profile_name = module.iam.iam_instance_profile_name
+  DB_HOST                   = module.rds.rds_endpoint
 }
 
 
 
-data "aws_autoscaling_group" "app_asg" {
-  name = module.asg.asg_name
-}
+# data "aws_autoscaling_group" "app_asg" {
+#   name = module.asg.asg_name
+# }
 
 // This returns all EC2 instances that have the tag Role = App
 data "aws_instances" "app_ec2" {

@@ -1,6 +1,7 @@
 #!/bin/bash
 yum update -y
-yum install -y httpd php php-mysqli
+# jq to parse JSON, amazon-cloudwatch-agent for monitoring
+yum install -y httpd php php-mysqli jq mariadb105
 yum install -y amazon-cloudwatch-agent
 
 # Create CloudWatch Agent config directory
@@ -8,7 +9,6 @@ mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
 
 systemctl start httpd
 systemctl enable httpd
-
 
 # Add a wait loop to ensure EC2 metadata and IAM role are ready
 # Get instance ID using IMDSv2
@@ -45,6 +45,49 @@ EOF
 
 
 
+
+# -----------------------------
+# Step: Get DB credentials from Secrets Manager
+# -----------------------------
+# Ask AWS Secrets Manager for the secret called "rds-db-credentials".
+# This command pulls the latest value (a JSON string) into a variable.
+SECRET_JSON=$(aws secretsmanager get-secret-value \
+  --secret-id rds-db-credentials \
+  --query SecretString \
+  --output text \
+  --region us-east-1)
+
+# The secret comes back as JSON text. Example:
+# {"username":"mydbuser","password":"mypassword","dbname":"myappdb"}
+# We use 'jq' to pick out each field and store it in shell variables.
+DB_USER=$(echo $SECRET_JSON | jq -r .username)
+DB_PASS=$(echo $SECRET_JSON | jq -r .password)
+DB_NAME=$(echo $SECRET_JSON | jq -r .dbname)
+
+# The DB host (the RDS endpoint) is not inside the secret.
+# Terraform will fill in the right endpoint at runtime using ${DB_HOST}.
+DB_HOST="${DB_HOST}"
+
+# Now write these values into a PHP file that our web app can include.
+# This way the PHP app doesn't need to know AWS CLI—it just "require()s" this file.
+# The values are injected safely at boot instead of being hard-coded.
+# using \ before $ to read the variable value (LHS) in php file. Otherwise it will not take the LHS value.
+cat > /var/www/html/db.php <<EOF
+<?php
+\$db_host = "${DB_HOST}";
+\$db_user = "$${DB_USER}";
+\$db_pass = "$${DB_PASS}";
+\$db_name = "$${DB_NAME}";
+?>
+EOF
+
+
+
+
+
+# -----------------------------
+# Main PHP application
+# -----------------------------
 cat << 'EOF' > /var/www/html/index.php
 <?php
 header("Content-Type: text/html");
@@ -65,8 +108,13 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, ["X-aws-ec2-metadata-token: $token"]);
 $instance_id = curl_exec($ch);
 curl_close($ch);
 
+// Load DB credentials
+require '/var/www/html/db.php';   // absolute path
+
+
 // MySQL connection
-$conn = new mysqli("finalprojectdb.capwqk4ckivq.us-east-1.rds.amazonaws.com", "admin", "SenecaCAA100", "finalprojectdb");
+// This uses the variables defined in db.php
+$conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
 
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
@@ -120,5 +168,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 </html>
 EOF
 
-chmod 644 /var/www/html/index.php
-chown apache:apache /var/www/html/index.php
+# -----------------------------
+# Healthcheck PHP script
+# The load balancer will call this to check if the app is healthy. 
+# Checking it via /index.php could give false negatives sometimes and make our LB think the app is unhealthy.
+# -----------------------------
+cat << 'EOF' > /var/www/html/healthcheck.php
+<?php
+// Load DB credentials
+require 'db.php';
+
+// Simple DB connection test
+$conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
+
+if ($conn->connect_error) {
+    http_response_code(500);
+    echo "DB connection failed";
+    exit;
+}
+
+http_response_code(200);
+echo "OK";
+?>
+EOF
+
+chmod 644 /var/www/html/index.php /var/www/html/db.php /var/www/html/healthcheck.php
+chown apache:apache /var/www/html/index.php /var/www/html/db.php /var/www/html/healthcheck.php

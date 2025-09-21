@@ -30,6 +30,20 @@ output "ec2_private_key" {
 }
 
 output "iam_instance_profile_name" {
-  value = module.iam.iam_instance_profile_name
+  value       = module.iam.iam_instance_profile_name
   description = "Name of the IAM Instance Profile"
+}
+
+output "db_secret_arn" {
+  description = "ARN of the DB credentials secret"
+  value       = aws_secretsmanager_secret.db_credentials.arn
+}
+output "db_secret_name" {
+  description = "Name of the DB credentials secret"
+  value       = aws_secretsmanager_secret.db_credentials.name
+}
+
+output "gha_role_arn" {
+  value       = module.iam.gha_role_arn
+  description = "ARN of the GitHub Actions IAM Role"
 }
