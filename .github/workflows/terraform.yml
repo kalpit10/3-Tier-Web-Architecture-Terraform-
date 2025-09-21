@@ -8,6 +8,10 @@ on:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    env:
+      TF_VAR_db_username: ${{ secrets.TF_VAR_DB_USERNAME }}
+      TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+      TF_VAR_db_name: ${{ secrets.TF_VAR_DB_NAME }}
     permissions:
       id-token: write # required for OIDC
       contents: read # allow checkout
@@ -41,8 +45,14 @@ jobs:
       # Terraform Validate
       - name: Terraform Validate
         run: terraform validate
+      - name: Debug Vars
+        run: |
+          echo "Username: $TF_VAR_db_username"
+          echo "DB Name: $TF_VAR_db_name"
+          echo "Password is set? ${TF_VAR_db_password:+yes}"
 
       # Terraform Plan
+      # -input=false prevents interactive prompts. Suitable for CI/CD because there's no one to answer prompts.
       - name: Terraform Plan
         run: terraform plan -input=false
 
