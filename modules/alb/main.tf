@@ -19,7 +19,7 @@ resource "aws_lb_target_group" "this" {
   target_type = "instance" # We're registering EC2s by their instance IDs
 
   health_check {
-    path                = "/index.php"
+    path                = "/healthcheck.php"
     protocol            = "HTTP"
     interval            = 30 # in seconds
     timeout             = 5
