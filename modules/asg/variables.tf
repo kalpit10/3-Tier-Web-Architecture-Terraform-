@@ -52,3 +52,8 @@ variable "iam_instance_profile_name" {
   description = "Name of the IAM Instance Profile"
   type        = string
 }
+
+variable "DB_HOST" {
+  description = "RDS endpoint hostname for DB connection"
+  type        = string
+}

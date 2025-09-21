@@ -1,14 +1,20 @@
 resource "aws_launch_template" "this" {
-  name_prefix   = "final-project-lt-v8"
+  name_prefix   = "final-project-lt-v2"
   image_id      = var.ami_id
   instance_type = var.instance_type
   key_name      = var.key_name
 
   vpc_security_group_ids = [var.app_sg_id]
 
+  // These keywords allow us to pass in a script that runs at boot time.
+  // Dummy values for DB_USER, DB_PASS, DB_NAME are replaced at runtime by real values.
+  // templatefile() reads the user-data.sh file and replaces placeholders with real values.
   user_data = base64encode(templatefile("${path.module}/../../user-data.sh", {
-    cloudwatch_agent_config = var.cloudwatch_agent_config
+    cloudwatch_agent_config = var.cloudwatch_agent_config,
+    DB_HOST                 = var.DB_HOST
   }))
+
+
 
   iam_instance_profile {
     name = var.iam_instance_profile_name
