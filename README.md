@@ -4,45 +4,45 @@ This repository contains the complete **Terraform configuration** for a modular,
 
 ## Architecture Overview
 
-A traditional 3-tier structure using **VPC**, **subnets**, **EC2**, **ALB**, **ASG**, and **RDS**, fully written in Terraform.
+A traditional 3-tier structure on AWS using **VPC**, **subnets**, **ALB**, **ASG/EC2**, and **RDS**, fully managed with Terraform.
 
 ### 🌐 Web Tier (Public Subnets)
 
-- **Application Load Balancer (ALB)** — Handles all incoming HTTP traffic
-- **Public Subnets** — `192.168.1.0/24` (AZ A), `192.168.2.0/24` (AZ B)
-- **Internet Gateway** — Allows public internet access
-- **Security Group** — Allows port 80 (HTTP) traffic from the internet
+- **Application Load Balancer (ALB)**
+  - Listens on HTTP :80
+  - **Health check** path: `/healthcheck.php` (lightweight DB reachability)
+- **Public subnets**: `192.168.1.0/24` (us-east-1a), `192.168.2.0/24` (us-east-1b)
+- **Internet Gateway** for inbound/outbound internet
+- **Security Group (ALB)**: allow TCP/80 from `0.0.0.0/0`
+- **Bastion host** (for admin SSH) in a public subnet, SG restricted to my IP
 
 ### 🖥️ Application Tier (Private Subnets)
 
-- **Auto Scaling Group (ASG)** — Maintains 2–6 EC2 instances
-- **Launch Template** — With Amazon Linux 2023 and CloudWatch Agent
-- **Private Subnets** — `192.168.10.0/24`, `192.168.11.0/24`
-- **NAT Gateways** — 2 for outbound internet access
-- **Security Group** — Allows HTTP only from ALB
+- **Auto Scaling Group (ASG)** across two private subnets: `192.168.10.0/24`, `192.168.11.0/24`
+- **Launch Template**
+  - Amazon Linux 2023
+  - **User data** bootstraps Apache/PHP, installs CloudWatch Agent, and **pulls DB creds from AWS Secrets Manager** to generate `db.php`
+  - Uses **IMDSv2** in scripts
+- **IAM instance profile**
+  - Grants least-necessary access: `secretsmanager:GetSecretValue` and CloudWatch logs/metrics
+- **NAT Gateways (2)** for outbound internet from private subnets
+- **Security Group (App)**: allow TCP/80 **only** from ALB SG
 
 ### 🗄️ Database Tier (Private Subnets)
 
-- **RDS MySQL** — Single-AZ for cost savings
-- **DB Subnet Group** — `192.168.20.0/24`, `192.168.21.0/24`
-- **Security Group** — Allows MySQL traffic only from EC2 instances
+- **Amazon RDS for MySQL** (Single-AZ, cost-optimized)
+- **DB subnets**: `192.168.20.0/24`, `192.168.21.0/24`
+- **Security Group (DB)**: allow TCP/3306 **only** from App SG
+- **Credentials**: app tier reads username/password/dbname **from AWS Secrets Manager** at boot; no secrets hardcoded in code
 
----
+### 🛠️ Platform & Ops Components
 
-## Development Environment Specifications
-
-### Cost-Optimized Configuration
-
-- **EC2 Instances**: t2.micro (2-6 instances)
-- **RDS Instance**: db.t2.micro, single-AZ
-- **Storage**: GP3 for cost-effective performance
-
-### Network Configuration
-
-- **VPC CIDR**: 192.168.0.0/16
-- **Availability Zones**: 2 AZs for high availability(us-east-1a/1b)
-- **Subnets**: 6 subnets total (2 public, 4 private)
-- **NAT Gateways**: 2 for redundancy
+- **Monitoring**: CloudWatch Agent on EC2; ALB health checks decoupled from app logic
+- **Access control**: IAM roles and scoped policies for EC2 + CI/CD
+- **(IaC) Remote state & locking**: S3 (versioned, SSE) + DynamoDB table for state locking
+- **CI/CD**: GitHub Actions with **OIDC** to assume an AWS role (no long-lived keys)
+  - PRs: `fmt` / `validate` / `plan`
+  - `main`: manual approval gate → `apply`
 
 ---
 
@@ -56,7 +56,7 @@ A traditional 3-tier structure using **VPC**, **subnets**, **EC2**, **ALB**, **A
 
 ## Deployment Instructions
 
-### 1. Initialize Terraform if using Cloud9 environment 
+### 1. Initialize Terraform if using Cloud9 environment
 
 ```bash
 cd ~
@@ -78,6 +78,7 @@ aws configure
 ```
 
 ### 3. Validate the Syntax
+
 ```bash
 terraform validate
 ```
@@ -107,43 +108,57 @@ application_url = "http://dev-3tier-alb-xxxxxxxxx.us-east-1.elb.amazonaws.com"
 ## Setting Up and Testing the PHP Application
 
 ### Pre-requisites
+
 Before testing the form submission, you need to create the required database table.
 
 ### Step 1: Connect to Bastion Host
+
 1. Navigate to **EC2 Console** → **Instances**
 2. Select your **Bastion Host** instance
 3. Click **Connect** → **EC2 Instance Connect**
 
 ### Step 2: Access Private EC2 Instance
-From the Bastion Host, SSH into one of your private EC2 instances:
-```bash
-ssh -i your-key.pem ec2-user@<private-ec2-ip>
-```
 
-### Step 3: Install MySQL Client
-Install MariaDB client to connect to the RDS MySQL database:
-```bash
-sudo yum update -y
-sudo yum install -y mariadb105
-```
+After the infrastructure is applied, a **private key** will be generated and stored under the `modules/security` folder.
 
-### Step 4: Create Database Table
-Connect to your RDS instance and create the required table:
+1. **SSH into the Bastion Host** (public subnet):
+
+   ```bash
+   ssh -i your-key.pem ec2-user@<bastion-public-ip>
+   ```
+
+2. **On the Bastion Host**, create a new file for the private key:
+
+   ```bash
+   nano <key_name>.pem
+   ```
+
+   Paste the contents of the private key generated from the `modules/security` folder into this file.
+
+3. **Set the correct permissions**:
+
+   ```bash
+   chmod 400 <key_name>.pem
+   ```
+
+4. **Now use this key to SSH into one of the private EC2 instances**:
+   ```bash
+   ssh -i <key_name>.pem ec2-user@<private-ec2-ip>
+   ```
+
+### Step 3: Access MySQL
+
+Connect to your RDS instance:
+
 ```bash
 mysql -h finalprojectdb.xxxxxxxxxxxxxxxx.us-east-1.rds.amazonaws.com -u <db_username> -p
 ```
+
 Once connected, run these SQL commands:
+
 ```bash
 -- Use the database
 USE finalprojectdb;
-
--- Create users table
-CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(150) NOT NULL UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 -- Verify table creation
 DESCRIBE users;
@@ -152,7 +167,8 @@ DESCRIBE users;
 EXIT;
 ```
 
-### Step 5: Test the Application
+### Step 4: Test the Application
+
 - Open your Application Load Balancer DNS name in a web browser
 - You should see the PHP form with Instance ID displayed. Refresh the page to switch between instances.
 - Fill in the form with a name and email
@@ -187,74 +203,104 @@ SELECT * FROM users;
 - App SG: Allows HTTP only from ALB (Security Group Chaining)
 - DB SG: Allows MySQL from App SG
 - Bastion SG: Allows SSH via key pair
+- **Key Management**: Terraform generates and stores a private key under `modules/security`
 
 ### Application (Application Module)
 
 - Application Load Balancer
-- Target Group with Health Checks
+- Target Group with Health Checks (now pointed to `/healthcheck.php` for reliability)
 - Launch Template with Amazon Linux 2023, CloudWatch Agent, user-data.sh for PHP form setup
 - Auto Scaling Group (2-6 instances)
+- **Secrets Manager Integration**: Application retrieves DB credentials securely from AWS Secrets Manager
+- **Improved Health Checks**: Lightweight `healthcheck.php` deployed to instances for reliable ALB health monitoring
 
 ### Database (Database Module)
 
 - RDS MySQL instance
 - DB Subnet Group
+- **Dynamic Credentials**: Managed via AWS Secrets Manager
+- **Secure Access**: Only App SG can connect to DB SG
 
 ---
 
 ## Security Features
 
 - **Network Isolation**: Multi-tier subnet architecture
-- **Security Groups**: Least-privilege access rules. Security Group Chaining.
+- **Security Groups**: Least-privilege access rules with Security Group Chaining
 - **Encryption**: EBS volumes and RDS storage encrypted
 - **IMDSv2**: Required on all EC2 instances
+- **Secrets Management**: DB credentials stored securely in AWS Secrets Manager instead of hardcoded in user-data
+- **IAM Roles**: Instance profiles allow EC2 to fetch secrets and send metrics/logs
 
 ---
 
 ## Monitoring and Logging
 
-- **CloudWatch Logs (Log Groups)**:  /ec2/log/access || /ec2/log/error
+- **CloudWatch Logs (Log Groups)**: /ec2/log/access || /ec2/log/error
 - **CloudWatch Agent**: CPU, Memory, Disk metrics
 - **CloudWatch Dashboard**: CPU and Memory% Monitoring Per Instance
-- **Health Checks**: ALB health checks for application instances
-- **Auto Scaling**: Based on instance cpu load.
- 
+- **Health Checks**: ALB health checks now use `/healthcheck.php`
+- **Auto Scaling**: Based on instance CPU load
+- **Improved Debugging**: Added testdb.php and healthcheck.php for validation and troubleshooting
+
+---
+
+## Infrastructure Management
+
+- **Terraform Remote State**: Managed with S3 backend and DynamoDB table for state locking
+- **CI/CD with GitHub Actions**:
+  - OIDC integration with AWS (no long-lived keys)
+  - `terraform fmt`, `validate`, and `plan` on push to main as well as pull requests
+  - `terraform apply` gated by manual approval in `dev` environment
+- **Version Control**: All IaC stored in GitHub repository
+
 ---
 
 ## AWS Cost Optimization Overview
 
-This development environment is optimized for cost:
+This development stack stays small but not free. Figures below reflect current public pricing for **US-East-1**.
+Always confirm with the AWS Pricing Calculator for exact workloads.
 
-### Cost Optimization Overview (Per Hour)
+### Cost Breakdown (Per Hour)
 
-| AWS Service           | Resource Type              | Quantity          | Est. Hr. Cost (USD) | Notes               |
-|-----------------------|----------------------------|-------------------|---------------------|---------------------|
-| VPC & Subnets         | VPC, Subnets, RTs          | 1 VPC + 6 Subnets | $0.00               | Free                |
-| Internet Gateway      | -                          | 1                 | $0.00               | Free                |
-| NAT Gateway           | NAT + Data                 | 2                 | ~$0.045/hr each     | $0.09/hr total      |
-| EC2 Instances         | t2.micro                   | 2-6               | ~$0.0116/hr each    | Free Tier may apply |
-| EBS Volumes           | 8GB gp3                    | 2-6               | ~$0.0011/hr per 8GB | Free Tier may apply |
-| ALB (Load Balancer)   | Application Load Balancer  | 1                 | ~$0.0225/hr         | Plus ~$0.008 per GB |
-| RDS MySQL             | db.t2.micro                | 1                 | ~$0.017/hr          | Single-AZ           |
-| RDS Storage           | 20GB gp2/gp3               | 1                 | ~$0.0025/hr         | $0.08/GB-month      |
-| CloudWatch Logs       | Log ingestion              | Variable          | ~$0.005-0.01/hr     | Based on usage      |
-| CloudWatch Agent      | Basic EC2 metrics          | 2-6 EC2s          | ~$0.00/hr           | Free (Basic)        |
-| CloudWatch Dashboards | 1 Dashboard                | 1                 | ~$0.0083/hr         | $3/month flat rate  |
+| AWS Service                   | Resource Type             |          Quantity |                                Est. Hr. Cost (USD) | Notes                                                                |
+| ----------------------------- | ------------------------- | ----------------: | -------------------------------------------------: | -------------------------------------------------------------------- |
+| VPC & Subnets                 | VPC, Subnets, RTs         | 1 VPC + 6 Subnets |                                              $0.00 | Core VPC constructs are free.                                        |
+| Internet Gateway              | —                         |                 1 |                                              $0.00 | IGW has no hourly fee.                                               |
+| **NAT Gateway**               | NAT + Data                |             **2** |                  **$0.045/hr each** → **$0.09/hr** | Plus **$0.045/GB** processed through NAT.                            |
+| **EC2 Instances**             | **t2.micro** (Linux)      |           **2–6** |       **$0.0116/hr each** → **$0.0232–$0.0696/hr** | On-demand price in us-east-1.                                        |
+| **EBS Volumes**               | **gp3** 8 GB per instance |               2–6 | **~$0.00089/hr per 8 GB** → **$0.0018–$0.0053/hr** | gp3 is **$0.08/GB-mo**.                                              |
+| **Application Load Balancer** | ALB                       |                 1 |                 **$0.0225/hr + $0.008 per LCU-hr** | Light dev traffic often <1 LCU.                                      |
+| **RDS MySQL**                 | **db.t3.micro**           |                 1 |                              **~$0.017–$0.018/hr** | On-demand us-east-1.                                                 |
+| **RDS Storage**               | gp3 **20 GB**             |                 1 |                                    **~$0.0022/hr** | $0.08/GB-mo → $1.60/mo.                                              |
+| CloudWatch Logs               | Log ingestion             |          Variable |                                           Variable | After free tier, ingestion commonly **$0.50/GB** range; usage-based. |
+| **CloudWatch Dashboard**      | 1 dashboard               |                 1 |                                    **~$0.0042/hr** | $3 per dashboard per month.                                          |
+| **Secrets Manager**           | 1 secret                  |                 1 |                                   **~$0.00056/hr** | **$0.40/secret-mo** + **$0.05/10k API calls**.                       |
+| S3 Backend                    | Standard storage          |            Few MB |                                             ~$0.00 | Pennies per month for state file.                                    |
+| DynamoDB Locking              | Pay-per-request           |       Light usage |                                             ~$0.00 | Lock table with on-demand reads/writes for Terraform.                |
 
-⚠️ **Note:** Data transfer, EIP association, and scaling events can increase charges slightly.
+### Estimated Total Hourly Cost
 
-### Total Estimated Hourly Cost
+| Tier       | Description            |                             Approx. Cost Range (/hr) |
+| ---------- | ---------------------- | ---------------------------------------------------: |
+| Networking | NAT, IGW, VPC          |                                           **~$0.09** |
+| Compute    | EC2 + EBS + ALB base   | **~$0.05–$0.10** (depends on EC2 count and ALB LCUs) |
+| Database   | RDS + Storage          |                                   **~$0.019–$0.020** |
+| Monitoring | CloudWatch + Dashboard |                 **~$0.004–$0.01** (ingestion varies) |
+| Secrets    | Secrets Manager        |                                         **~$0.0006** |
 
-| Tier       | Description                      | Approx. Cost Range (/hr)  |
-|------------|----------------------------------|---------------------------|
-| Networking | NAT, IGW, VPC, Subnets           | ~$0.09                    |
-| Compute    | EC2 + ALB + EBS                  | ~$0.02 - $0.12            |
-| Database   | RDS + Storage                    | ~$0.02                    |
-| Monitoring | CloudWatch + Logs + Dashboard    | ~$0.005 - $0.02           |
+**Estimated Total:** **~$0.16–$0.22 per hour** for typical dev usage, excluding variable data transfer and log ingestion. That’s roughly **$115–$160/month** if left running 24×7. Your largest steady cost remains the **two NAT Gateways**.
 
-💡 **Estimated Total: ~$0.13 to $0.28/hour** depending on active instances and log volume.
+> Notes  
+> • **ALB LCUs** add cost with throughput, new connections, active connections, or rule evaluations; base hourly is fixed.  
+> • **gp3 vs gp2**: gp3 is cheaper at **$0.08/GB-mo** and recommended.  
+> • **Secrets Manager** has a small fixed fee; Parameter Store standard tier would be free but lacks native rotation.
 
-**Estimated Monthly Cost**: ~$50-80 USD (varies by usage)
+#### Where to Save Fast
+
+- Replace **2 NAT Gateways** with **1** during dev or try **NAT instance** for labs. Biggest dollar lever.
+- Keep **ALB** only when testing.
+- Stop **RDS** and **EC2** when idle or script full teardown.
 
 ---
 
@@ -272,13 +318,15 @@ terraform destroy
 
 ### Troubleshooting Guide
 
-| Issue                        | Solution                                                          |
-|------------------------------|-------------------------------------------------------------------|
-| App Not Loading in Browser   | Check ALB Target Group health status                              |
-| CloudWatch Agent Not Running | Ensure metadata token (IMDSv2) is fetched correctly               |
-| SSH Not Working              | Ensure `.pem` key has `chmod 600` and correct private IP used     |
-| No CPU Metrics Visible       | Use `stress` tool to simulate load                                |
-
+| Issue                            | Possible Cause                                 | Solution                                                                                                              |
+| -------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **App not loading in browser**   | ALB Target Group shows **Unhealthy** instances | • Verify ALB health check path (use `/healthcheck.php`)<br>• Check Apache/PHP error logs (`/var/log/httpd/error_log`) |
+| **CloudWatch Agent not running** | IMDSv2 token or config not retrieved properly  | • Confirm script fetches IMDSv2 token correctly<br>• Run `sudo systemctl status amazon-cloudwatch-agent`              |
+| **SSH not working**              | Incorrect key permissions or IP mismatch       | • Ensure `.pem` file has `chmod 400`<br>• Use Bastion host with correct private IP of target instance                 |
+| **No CPU metrics visible**       | Agent running but no workload generated        | • Install `stress` tool (`sudo yum install stress -y`)<br>• Run `stress --cpu 2 --timeout 60` to generate load        |
+| **500 Internal Server Error**    | Missing DB table or PHP extension              | • Ensure `users` table exists in RDS<br>• Verify PHP `mysqli` extension is installed                                  |
+| **Secrets not loading**          | Placeholder values left in `db.php`            | • Check `/var/www/html/db.php` contains actual DB creds<br>• Verify `user-data.sh` fetches from Secrets Manager       |
+| **Terraform apply fails**        | Remote state or secret already exists          | • Run `terraform state rm <resource>` to unlink<br>• Or use `terraform import` to reattach existing resource          |
 
 ---
 
@@ -303,13 +351,14 @@ terraform refresh
 
 ## Learning Objectives Achieved
 
-- ✅ **Terraform Basics**: Variables, outputs, modules, data sources
-- ✅ **AWS Networking**: VPC, subnets, routing, NAT gateways
-- ✅ **Security**: Security groups, least privilege access
-- ✅ **High Availability**: Multi-AZ deployment, auto scaling
-- ✅ **CloudWatch Observability**: CloudWatch agent, custom metrics, dashboards
-- ✅ **Database Management**: RDS, parameter groups, secrets management
-- ✅ **Infrastructure as Code**: Modular, reusable Terraform code
-- ✅ **Debugging & Troubleshooting**: Solved real IAM, metadata, health check, and CloudWatch agent issues
+- ✅ **Terraform Proficiency**: Learned variables, outputs, modules, data sources, and implemented remote backend with S3 + DynamoDB for secure state management.
+- ✅ **AWS Networking**: Designed a VPC with public/private subnets, routing, Internet/NAT Gateways, and Bastion Host for secure access.
+- ✅ **Security & Identity**: Applied least-privilege security groups, IAM instance roles for Secrets Manager and CloudWatch, and OIDC-based IAM role for GitHub Actions.
+- ✅ **High Availability & Scalability**: Configured ALB + Auto Scaling Group across multiple AZs, using launch templates with dynamic user data.
+- ✅ **Observability & Monitoring**: Deployed CloudWatch Agent for EC2 metrics, created dashboards, and integrated custom health checks (`healthcheck.php`) for ALB.
+- ✅ **Database Management**: Provisioned RDS MySQL with private subnets, subnet groups, Secrets Manager integration, and verified secure app connectivity.
+- ✅ **Infrastructure as Code (IaC)**: Built fully modular Terraform codebase with reusable modules for VPC, ALB, ASG, RDS, and Security.
+- ✅ **CI/CD Automation**: Implemented GitHub Actions pipeline with Terraform plan, manual approval, and apply using OIDC for secure AWS access.
+- ✅ **Debugging & Troubleshooting**: Resolved real-world issues (IMDSv2, CloudWatch agent config, IAM permission errors, ALB health check 500s, PHP app/database integration).
 
-This development environment provides a solid foundation for learning AWS and Terraform while following best practices for a production-ready architecture.
+📌 This environment not only strengthens AWS + Terraform fundamentals but also simulates **production-grade workflows** with security, automation, and troubleshooting practices.
