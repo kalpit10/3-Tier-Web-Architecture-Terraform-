@@ -6,6 +6,8 @@ This repository contains the complete **Terraform configuration** for a modular,
 
 A traditional 3-tier structure on AWS using **VPC**, **subnets**, **ALB**, **ASG/EC2**, and **RDS**, fully managed with Terraform.
 
+![Architecture Diagram](./images/3-Tier%20Arch.png)
+
 ### 🌐 Web Tier (Public Subnets)
 
 - **Application Load Balancer (ALB)**
